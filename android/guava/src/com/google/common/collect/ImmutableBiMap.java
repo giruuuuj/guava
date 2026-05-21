@@ -527,6 +527,7 @@ public abstract class ImmutableBiMap<K, V> extends ImmutableMap<K, V> implements
         return bimap;
       }
     }
+    // Map.forEach is avoided in the Android java7 branch to maintain compatibility with Android APIs < 24.
     return copyOf(map.entrySet());
   }
 

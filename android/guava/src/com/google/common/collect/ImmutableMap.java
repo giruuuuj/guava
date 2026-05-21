@@ -510,6 +510,7 @@ public abstract class ImmutableMap<K, V> implements Map<K, V>, Serializable {
      */
     @CanIgnoreReturnValue
     public Builder<K, V> putAll(Map<? extends K, ? extends V> map) {
+      // Map.forEach is avoided in the Android java7 branch to maintain compatibility with Android APIs < 24.
       return putAll(map.entrySet());
     }
 
@@ -736,6 +737,7 @@ public abstract class ImmutableMap<K, V> implements Map<K, V>, Serializable {
         return kvMap;
       }
     }
+    // Map.forEach is avoided in the Android java7 branch to maintain compatibility with Android APIs < 24.
     return copyOf(map.entrySet());
   }
 

@@ -541,7 +541,35 @@ public abstract class ImmutableBiMap<K, V> extends ImmutableMap<K, V> implements
         return bimap;
       }
     }
-    return copyOf(map.entrySet());
+    int size = map.size();
+    if (size == 0) {
+      return of();
+    }
+    @SuppressWarnings("unchecked")
+    Entry<K, V>[] entries = (Entry<K, V>[]) new Entry<?, ?>[size];
+    class EntryCollector implements java.util.function.BiConsumer<K, V> {
+      Entry<K, V>[] array = entries;
+      int index = 0;
+
+      @Override
+      public void accept(K k, V v) {
+        if (index >= array.length) {
+          array = Arrays.copyOf(array, index + 4);
+        }
+        array[index++] = entryOf(k, v);
+      }
+    }
+    EntryCollector collector = new EntryCollector();
+    map.forEach(collector);
+    int finalSize = collector.index;
+    Entry<K, V>[] finalEntries = collector.array;
+    if (finalSize < finalEntries.length) {
+      finalEntries = Arrays.copyOf(finalEntries, finalSize);
+    }
+    if (finalSize == 0) {
+      return of();
+    }
+    return RegularImmutableBiMap.fromEntryArray(finalSize, finalEntries);
   }
 
   /**
