@@ -201,8 +201,10 @@ public final class DoubleMath {
   @GwtIncompatible // com.google.common.math.DoubleUtils
   public static boolean isPowerOfTwo(double x) {
     if (x > 0.0 && isFinite(x)) {
-      long significand = getSignificand(x);
-      return (significand & (significand - 1)) == 0;
+      long bits = Double.doubleToRawLongBits(x);
+      long significand = bits & 0x000FFFFFFFFFFFFFL;
+      return significand == 0
+          || ((bits & 0x7FF0000000000000L) == 0 && (significand & (significand - 1)) == 0);
     }
     return false;
   }

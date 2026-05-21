@@ -390,7 +390,7 @@ public final class IntMath {
     if (m <= 0) {
       throw new ArithmeticException("Modulus " + m + " must be > 0");
     }
-    return Math.floorMod(x, m);
+    return ((m & (m - 1)) == 0) ? (x & (m - 1)) : Math.floorMod(x, m);
   }
 
   /**
