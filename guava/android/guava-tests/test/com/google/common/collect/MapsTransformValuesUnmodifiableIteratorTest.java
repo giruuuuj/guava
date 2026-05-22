@@ -1,0 +1,376 @@
+/*
+ * Copyright (C) 2011 The Guava Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.google.common.collect;
+
+import static com.google.common.collect.Iterators.unmodifiableIterator;
+import static com.google.common.collect.Maps.immutableEntry;
+import static com.google.common.collect.Maps.newTreeMap;
+import static com.google.common.collect.Maps.transformValues;
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
+
+import com.google.common.annotations.GwtCompatible;
+import com.google.common.base.Function;
+import com.google.common.base.Functions;
+import com.google.common.collect.testing.MapInterfaceTest;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * Tests for {@link Maps#transformValues} when the backing map's views have iterators that don't
+ * support {@code remove()}.
+ *
+ * @author Jared Levy
+ */
+@GwtCompatible
+@NullMarked
+public class MapsTransformValuesUnmodifiableIteratorTest extends MapInterfaceTest<String, String> {
+  // TODO(jlevy): Move shared code of this class and MapsTransformValuesTest
+  // to a superclass.
+
+  public MapsTransformValuesUnmodifiableIteratorTest() {
+    super(true, true, /* supportsPut= */ false, true, true, false);
+  }
+
+  private static class UnmodifiableIteratorMap<K, V> extends ForwardingMap<K, V> {
+    final Map<K, V> delegate;
+
+    UnmodifiableIteratorMap(Map<K, V> delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    protected Map<K, V> delegate() {
+      return delegate;
+    }
+
+    @Override
+    public Set<K> keySet() {
+      return new ForwardingSet<K>() {
+        @Override
+        protected Set<K> delegate() {
+          return delegate.keySet();
+        }
+
+        @Override
+        public Iterator<K> iterator() {
+          return unmodifiableIterator(delegate.keySet().iterator());
+        }
+
+        @Override
+        public boolean removeAll(Collection<?> c) {
+          return delegate.keySet().removeAll(c);
+        }
+
+        @Override
+        public boolean retainAll(Collection<?> c) {
+          return delegate.keySet().retainAll(c);
+        }
+      };
+    }
+
+    @Override
+    public Collection<V> values() {
+      return new ForwardingCollection<V>() {
+        @Override
+        protected Collection<V> delegate() {
+          return delegate.values();
+        }
+
+        @Override
+        public Iterator<V> iterator() {
+          return unmodifiableIterator(delegate.values().iterator());
+        }
+
+        @Override
+        public boolean removeAll(Collection<?> c) {
+          return delegate.values().removeAll(c);
+        }
+
+        @Override
+        public boolean retainAll(Collection<?> c) {
+          return delegate.values().retainAll(c);
+        }
+      };
+    }
+
+    @Override
+    public Set<Entry<K, V>> entrySet() {
+      return new ForwardingSet<Entry<K, V>>() {
+        @Override
+        protected Set<Entry<K, V>> delegate() {
+          return delegate.entrySet();
+        }
+
+        @Override
+        public Iterator<Entry<K, V>> iterator() {
+          return unmodifiableIterator(delegate.entrySet().iterator());
+        }
+
+        @Override
+        public boolean removeAll(Collection<?> c) {
+          return delegate.entrySet().removeAll(c);
+        }
+
+        @Override
+        public boolean retainAll(Collection<?> c) {
+          return delegate.entrySet().retainAll(c);
+        }
+      };
+    }
+  }
+
+  @Override
+  protected Map<String, String> makeEmptyMap() {
+    Map<String, Integer> underlying = new HashMap<>();
+    return transformValues(
+        new UnmodifiableIteratorMap<String, Integer>(underlying), Functions.toStringFunction());
+  }
+
+  @Override
+  protected Map<String, String> makePopulatedMap() {
+    Map<String, Integer> underlying = new HashMap<>();
+    underlying.put("a", 1);
+    underlying.put("b", 2);
+    underlying.put("c", 3);
+    return transformValues(
+        new UnmodifiableIteratorMap<String, Integer>(underlying), Functions.toStringFunction());
+  }
+
+  @Override
+  protected String getKeyNotInPopulatedMap() {
+    return "z";
+  }
+
+  @Override
+  protected String getValueNotInPopulatedMap() {
+    return "26";
+  }
+
+  /** Helper assertion comparing two maps */
+  private void assertMapsEqual(Map<?, ?> expected, Map<?, ?> map) {
+    assertEquals(expected, map);
+    assertEquals(expected.hashCode(), map.hashCode());
+    assertEquals(expected.entrySet(), map.entrySet());
+
+    // Assert that expectedValues > mapValues and that
+    // mapValues > expectedValues; i.e. that expectedValues == mapValues.
+    Collection<?> expectedValues = expected.values();
+    Collection<?> mapValues = map.values();
+    assertEquals(expectedValues.size(), mapValues.size());
+    assertTrue(expectedValues.containsAll(mapValues));
+    assertTrue(mapValues.containsAll(expectedValues));
+  }
+
+  public void testTransformEmptyMapEquality() {
+    Map<String, String> map =
+        transformValues(ImmutableMap.<String, Integer>of(), Functions.toStringFunction());
+    assertMapsEqual(new HashMap<>(), map);
+  }
+
+  public void testTransformSingletonMapEquality() {
+    Map<String, String> map =
+        transformValues(ImmutableMap.of("a", 1), Functions.toStringFunction());
+    Map<String, String> expected = ImmutableMap.of("a", "1");
+    assertMapsEqual(expected, map);
+    assertThat(map.get("a")).isEqualTo(expected.get("a"));
+  }
+
+  public void testTransformIdentityFunctionEquality() {
+    Map<String, Integer> underlying = ImmutableMap.of("a", 1);
+    Map<String, Integer> map = transformValues(underlying, Functions.identity());
+    assertMapsEqual(underlying, map);
+  }
+
+  public void testTransformPutEntryIsUnsupported() {
+    Map<String, String> map =
+        transformValues(ImmutableMap.of("a", 1), Functions.toStringFunction());
+    assertThrows(UnsupportedOperationException.class, () -> map.put("b", "2"));
+
+    assertThrows(UnsupportedOperationException.class, () -> map.putAll(ImmutableMap.of("b", "2")));
+
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> map.entrySet().iterator().next().setValue("one"));
+  }
+
+  public void testTransformRemoveEntry() {
+    Map<String, Integer> underlying = new HashMap<>();
+    underlying.put("a", 1);
+    Map<String, String> map = transformValues(underlying, Functions.toStringFunction());
+    assertThat(map.remove("a")).isEqualTo("1");
+    assertThat(map.remove("b")).isNull();
+  }
+
+  public void testTransformEqualityOfMapsWithNullValues() {
+    Map<String, @Nullable String> underlying = new HashMap<>();
+    underlying.put("a", null);
+    underlying.put("b", "");
+
+    Map<String, Boolean> map = transformValues(underlying, from -> from == null);
+    assertMapsEqual(ImmutableMap.of("a", true, "b", false), map);
+    assertThat(map.get("a")).isEqualTo(true);
+    assertThat(map.containsKey("a")).isEqualTo(true);
+    assertThat(map.get("b")).isEqualTo(false);
+    assertThat(map.containsKey("b")).isEqualTo(true);
+    assertThat(map.get("c")).isNull();
+    assertThat(map.containsKey("c")).isEqualTo(false);
+  }
+
+  public void testTransformReflectsUnderlyingMap() {
+    Map<String, Integer> underlying = new HashMap<>();
+    underlying.put("a", 1);
+    underlying.put("b", 2);
+    underlying.put("c", 3);
+    Map<String, String> map = transformValues(underlying, Functions.toStringFunction());
+    assertEquals(underlying.size(), map.size());
+
+    underlying.put("d", 4);
+    assertEquals(underlying.size(), map.size());
+    assertThat(map.get("d")).isEqualTo("4");
+
+    underlying.remove("c");
+    assertEquals(underlying.size(), map.size());
+    assertFalse(map.containsKey("c"));
+
+    underlying.clear();
+    assertEquals(underlying.size(), map.size());
+  }
+
+  public void testTransformChangesAreReflectedInUnderlyingMap() {
+    Map<String, Integer> underlying = new LinkedHashMap<>();
+    underlying.put("a", 1);
+    underlying.put("b", 2);
+    underlying.put("c", 3);
+    underlying.put("d", 4);
+    underlying.put("e", 5);
+    underlying.put("f", 6);
+    underlying.put("g", 7);
+    Map<String, String> map = transformValues(underlying, Functions.toStringFunction());
+
+    map.remove("a");
+    assertFalse(underlying.containsKey("a"));
+
+    Set<String> keys = map.keySet();
+    keys.remove("b");
+    assertFalse(underlying.containsKey("b"));
+
+    Iterator<String> keyIterator = keys.iterator();
+    keyIterator.next();
+    keyIterator.remove();
+    assertFalse(underlying.containsKey("c"));
+
+    Collection<String> values = map.values();
+    values.remove("4");
+    assertFalse(underlying.containsKey("d"));
+
+    Iterator<String> valueIterator = values.iterator();
+    valueIterator.next();
+    valueIterator.remove();
+    assertFalse(underlying.containsKey("e"));
+
+    Set<Entry<String, String>> entries = map.entrySet();
+    Entry<String, String> firstEntry = entries.iterator().next();
+    entries.remove(firstEntry);
+    assertFalse(underlying.containsKey("f"));
+
+    Iterator<Entry<String, String>> entryIterator = entries.iterator();
+    entryIterator.next();
+    entryIterator.remove();
+    assertFalse(underlying.containsKey("g"));
+
+    assertTrue(underlying.isEmpty());
+    assertTrue(map.isEmpty());
+    assertTrue(keys.isEmpty());
+    assertTrue(values.isEmpty());
+    assertTrue(entries.isEmpty());
+  }
+
+  public void testTransformEquals() {
+    Map<String, Integer> underlying = ImmutableMap.of("a", 0, "b", 1, "c", 2);
+    Map<String, Integer> expected = transformValues(underlying, Functions.identity());
+
+    assertMapsEqual(expected, expected);
+
+    Map<String, Integer> equalToUnderlying = newTreeMap();
+    equalToUnderlying.putAll(underlying);
+    Map<String, Integer> map = transformValues(equalToUnderlying, Functions.identity());
+    assertMapsEqual(expected, map);
+
+    map =
+        transformValues(
+            ImmutableMap.of("a", 1, "b", 2, "c", 3),
+            new Function<Integer, Integer>() {
+              @Override
+              public Integer apply(Integer from) {
+                return from - 1;
+              }
+            });
+    assertMapsEqual(expected, map);
+  }
+
+  public void testTransformEntrySetContains() {
+    Map<@Nullable String, @Nullable Boolean> underlying = new HashMap<>();
+    underlying.put("a", null);
+    underlying.put("b", true);
+    underlying.put(null, true);
+
+    Map<@Nullable String, @Nullable Boolean> map =
+        transformValues(
+            underlying,
+            new Function<@Nullable Boolean, @Nullable Boolean>() {
+              @Override
+              public @Nullable Boolean apply(@Nullable Boolean from) {
+                return (from == null) ? true : null;
+              }
+            });
+
+    Set<Entry<@Nullable String, @Nullable Boolean>> entries = map.entrySet();
+    assertTrue(entries.contains(immutableEntry("a", true)));
+    assertTrue(entries.contains(Maps.<String, @Nullable Boolean>immutableEntry("b", null)));
+    assertTrue(
+        entries.contains(Maps.<@Nullable String, @Nullable Boolean>immutableEntry(null, null)));
+
+    assertFalse(entries.contains(Maps.<String, @Nullable Boolean>immutableEntry("c", null)));
+    assertFalse(entries.contains(Maps.<@Nullable String, Boolean>immutableEntry(null, true)));
+  }
+
+  @Override
+  public void testKeySetRemoveAllNullFromEmpty() {
+    try {
+      super.testKeySetRemoveAllNullFromEmpty();
+    } catch (RuntimeException tolerated) {
+      // GWT's HashMap.keySet().removeAll(null) doesn't throw NPE.
+    }
+  }
+
+  @Override
+  public void testEntrySetRemoveAllNullFromEmpty() {
+    try {
+      super.testEntrySetRemoveAllNullFromEmpty();
+    } catch (RuntimeException tolerated) {
+      // GWT's HashMap.entrySet().removeAll(null) doesn't throw NPE.
+    }
+  }
+}
